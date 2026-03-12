@@ -21,13 +21,13 @@ from telegram.ext import (
 # 🔑 BOT TOKEN
 # =========================================
 
-TOKEN = "PASTE_YOUR_BOT_TOKEN_HERE"
+TOKEN = "8645580845:AAGiUeKFO6Qx4E8MkfqNriHI7rTn5llJym0"
 
 # =========================================
 # 👑 ADMIN SYSTEM
 # =========================================
 
-ADMIN_ID = 9162572134 # replace with your telegram id
+ADMIN_ID = @greatvelocity# replace with your telegram id
 
 # =========================================
 # 🧠 SESSION MEMORY
@@ -778,3 +778,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
