@@ -1,69 +1,85 @@
 import sqlite3
 import datetime
+import os
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
-    MessageHandler,
     CallbackQueryHandler,
+    MessageHandler,
     ContextTypes,
     filters
 )
 
-# ================================
+# =========================================
 # 🔑 BOT TOKEN
-# ================================
+# =========================================
 
-TOKEN = "8645580845:AAGiUeKFO6Qx4E8MkfqNriHI7rTn5llJym0"
+TOKEN = "PASTE_YOUR_BOT_TOKEN_HERE"
 
-# ================================
+# =========================================
+# 👑 ADMIN SYSTEM
+# =========================================
+
+ADMIN_ID = 9162572134 # replace with your telegram id
+
+# =========================================
 # 🧠 SESSION MEMORY
-# ================================
+# =========================================
 
 sessions = {}
 
-# ================================
-# 🗄 DATABASE SETUP
-# ================================
+# =========================================
+# 🗄 DATABASE CONNECTION
+# =========================================
 
-conn = sqlite3.connect("trades.db", check_same_thread=False)
+conn = sqlite3.connect("trade_data.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# ---------- USERS TABLE ----------
+# =========================================
+# 👥 USERS TABLE
+# =========================================
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER UNIQUE,
-    name TEXT,
-    username TEXT,
-    joined_date TEXT
+CREATE TABLE IF NOT EXISTS users(
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+user_id INTEGER UNIQUE,
+name TEXT,
+username TEXT,
+joined_date TEXT
 )
 """)
 
-# ---------- TRADES TABLE ----------
+# =========================================
+# 📊 TRADES TABLE
+# =========================================
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS trades (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    username TEXT,
-    date TEXT,
-    buy_qty REAL,
-    sell_qty REAL,
-    avg_buy REAL,
-    avg_sell REAL,
-    profit REAL,
-    roi REAL
+CREATE TABLE IF NOT EXISTS trades(
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+user_id INTEGER,
+username TEXT,
+date TEXT,
+buy_qty REAL,
+sell_qty REAL,
+avg_buy REAL,
+avg_sell REAL,
+profit REAL,
+roi REAL
 )
 """)
 
 conn.commit()
 
-# ================================
+# =========================================
 # 👤 REGISTER USER
-# ================================
+# =========================================
 
 def register_user(user):
 
@@ -72,108 +88,146 @@ def register_user(user):
     username = user.username
     joined = str(datetime.date.today())
 
-    cursor.execute("SELECT user_id FROM users WHERE user_id=?", (user_id,))
+    cursor.execute(
+        "SELECT user_id FROM users WHERE user_id=?",
+        (user_id,)
+    )
+
     exists = cursor.fetchone()
 
     if not exists:
+
         cursor.execute(
             "INSERT INTO users (user_id,name,username,joined_date) VALUES (?,?,?,?)",
-            (user_id, name, username, joined)
+            (user_id,name,username,joined)
         )
+
         conn.commit()
 
-
-# ================================
+# =========================================
 # 🧠 TRADING INSIGHT ENGINE
-# ================================
+# =========================================
 
 def ai_insight(avg_buy, avg_sell):
 
     spread = avg_sell - avg_buy
 
     if spread < 2:
-        return """
-🧠 Trading Insight
 
-⚠️ Spread is very small.
+        return """
+⚠ Weak Spread
 
 Profit potential was limited.
-Try waiting for a better arbitrage window next time.
+Better opportunities usually appear above ₹5 spread.
 """
 
     elif spread < 5:
+
         return """
-🧠 Trading Insight
+🟡 Decent Spread
 
-🟡 Decent spread.
-
-Trade was acceptable but not very strong.
-A slightly wider spread would improve profits.
+Trade was okay but not very strong.
+Slightly larger spreads could improve profits.
 """
 
     elif spread < 10:
+
         return """
-🧠 Trading Insight
+🟢 Healthy Arbitrage
 
-🟢 Healthy arbitrage spread.
-
-Nice trade. Increasing volume here
-could scale your profits nicely.
+Nice trade.
+Scaling volume in these spreads can increase profits.
 """
 
     else:
+
         return """
-🧠 Trading Insight
+🚀 Excellent Spread
 
-🚀 Excellent spread detected!
-
-This was a strong arbitrage opportunity.
-Trades like this can significantly boost
-your daily profit.
+This was a powerful arbitrage opportunity.
+Trades like this can significantly boost daily profit.
 """
 
-# ================================
-# 🚀 START COMMAND
-# ================================
+# =========================================
+# 🚀 START COMMAND (TRADE DASHBOARD)
+# =========================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    register_user(update.effective_user)
+    user = update.effective_user
+    register_user(user)
 
-    name = update.effective_user.first_name
+    name = user.first_name
+    user_id = user.id
+
+    # --- Today profit summary ---
+
+    today = datetime.date.today().strftime("%Y-%m-%d")
+
+    cursor.execute(
+        "SELECT SUM(profit) FROM trades WHERE user_id=? AND date=?",
+        (user_id,today)
+    )
+
+    today_profit = cursor.fetchone()[0]
+
+    if today_profit is None:
+        today_profit = 0
+
+    # --- Dashboard Buttons ---
 
     keyboard = [
-        [InlineKeyboardButton("📊 New Trade", callback_data="new_trade")],
-        [InlineKeyboardButton("📜 Trade History", callback_data="history")],
-        [InlineKeyboardButton("📅 Last X Days", callback_data="days")],
-        [InlineKeyboardButton("🏆 Best Trade", callback_data="best_trade")],
-        [InlineKeyboardButton("💰 Total Profit", callback_data="profit")],
-        [InlineKeyboardButton("⚡ Opportunity Calculator", callback_data="calc")],
-        [InlineKeyboardButton("🤖 About Bot", callback_data="about")]
+
+        [
+            InlineKeyboardButton("📊 New Trade", callback_data="new_trade"),
+            InlineKeyboardButton("📜 History", callback_data="history")
+        ],
+
+        [
+            InlineKeyboardButton("📈 Analytics", callback_data="analytics"),
+            InlineKeyboardButton("🏆 Leaderboard", callback_data="leaderboard")
+        ],
+
+        [
+            InlineKeyboardButton("⚡ Calculator", callback_data="calc"),
+            InlineKeyboardButton("📅 Reports", callback_data="reports")
+        ],
+
+        [
+            InlineKeyboardButton("🤖 About Bot", callback_data="about")
+        ]
+
     ]
 
     await update.message.reply_text(
+
 f"""
-👋 Hey {name}!
+🚀 *Velocity Trade Terminal*
 
-🚀 Welcome to your *USDT Trading Assistant*
+Welcome back **{name}**
 
-This bot helps you:
+━━━━━━━━━━━━━━━━━━
 
-📊 Track your trades  
-💰 Calculate profit automatically  
-📈 Analyze arbitrage spreads  
-📂 Store your trading history  
+📊 *Today Snapshot*
 
-Tap a button below to begin 👇
+💰 Profit Today: ₹{today_profit:.2f}
+
+━━━━━━━━━━━━━━━━━━
+
+Your personal **USDT trading assistant**
+is ready.
+
+Select an action below 👇
 """,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
+
+    parse_mode="Markdown",
+    reply_markup=InlineKeyboardMarkup(keyboard)
+
     )
 
-# ================================
-# 🎛 BUTTON HANDLER
-# ================================
+# =========================================
+# 🎛 BUTTON CONTROL SYSTEM
+# =========================================
 
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -184,175 +238,229 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
 
 
-    # -------- NEW TRADE --------
+# =========================================
+# 📊 NEW TRADE
+# =========================================
+
     if data == "new_trade":
 
         sessions[user_id] = {"step": "buy_count"}
 
-        await query.edit_message_text(
-"""
-📊 Let's log today's trades!
+        keyboard = [
+            [InlineKeyboardButton("❌ Cancel Trade", callback_data="cancel_trade")]
+        ]
 
-🔢 How many times did you BUY USDT today?
+        await query.edit_message_text(
+
+"""
+📊 *Start New Trade*
+
+How many BUY deals did you execute today?
 
 (Max 15)
+""",
+
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+
+        )
+
+
+# =========================================
+# ❌ CANCEL TRADE
+# =========================================
+
+    elif data == "cancel_trade":
+
+        if user_id in sessions:
+            sessions.pop(user_id)
+
+        await query.edit_message_text(
+
+"""
+❌ Trade cancelled.
+
+You can start again anytime.
 """
         )
 
 
-    # -------- TRADE HISTORY --------
+# =========================================
+# 📜 HISTORY
+# =========================================
+
     elif data == "history":
 
         cursor.execute(
-            "SELECT date, profit FROM trades WHERE user_id=? ORDER BY id DESC LIMIT 5",
+            "SELECT date,profit FROM trades WHERE user_id=? ORDER BY id DESC LIMIT 5",
             (user_id,)
         )
 
         rows = cursor.fetchall()
 
         if not rows:
+
             await query.edit_message_text(
 """
-📜 Trade History
-
-No trades recorded yet.
+📜 No trades recorded yet.
 """
             )
+
             return
 
-        text = "📜 Your Recent Trades\n\n"
+
+        text = "📜 *Recent Trades*\n\n"
 
         for r in rows:
+
             text += f"📅 {r[0]} → 💰 ₹{r[1]:.2f}\n"
 
-        await query.edit_message_text(text)
-
-
-    # -------- TOTAL PROFIT --------
-    elif data == "profit":
-
-        cursor.execute(
-            "SELECT SUM(profit) FROM trades WHERE user_id=?",
-            (user_id,)
-        )
-
-        result = cursor.fetchone()[0]
-
-        if result is None:
-            result = 0
-
         await query.edit_message_text(
-f"""
-💰 Total Profit
-
-₹ {result:.2f}
-"""
+            text,
+            parse_mode="Markdown"
         )
 
 
-    # -------- OPPORTUNITY CALCULATOR --------
+# =========================================
+# ⚡ OPPORTUNITY CALCULATOR
+# =========================================
+
     elif data == "calc":
 
         await query.edit_message_text(
+
 """
-⚡ Opportunity Calculator
+⚡ *Arbitrage Calculator*
 
 Send numbers like this:
 
 Quantity BuyPrice SellPrice
 
 Example:
+
 1000 95 107
-"""
+""",
+
+        parse_mode="Markdown"
+
         )
 
 
-    # -------- BEST TRADE --------
-    elif data == "best_trade":
+# =========================================
+# 📈 ANALYTICS
+# =========================================
+
+    elif data == "analytics":
 
         cursor.execute(
-            "SELECT date, profit FROM trades WHERE user_id=? ORDER BY profit DESC LIMIT 1",
+            "SELECT SUM(profit), COUNT(*) FROM trades WHERE user_id=?",
             (user_id,)
         )
 
-        row = cursor.fetchone()
+        result = cursor.fetchone()
 
-        if not row:
+        profit = result[0] if result[0] else 0
+        trades = result[1]
+
+        await query.edit_message_text(
+
+f"""
+📊 *Trading Analytics*
+
+💰 Lifetime Profit: ₹{profit:.2f}
+
+📈 Total Trades: {trades}
+
+Keep stacking spreads 🚀
+""",
+
+        parse_mode="Markdown"
+
+        )
+
+
+# =========================================
+# 🏆 LEADERBOARD
+# =========================================
+
+    elif data == "leaderboard":
+
+        cursor.execute(
+
+"""
+SELECT username, SUM(profit)
+FROM trades
+GROUP BY user_id
+ORDER BY SUM(profit) DESC
+LIMIT 5
+"""
+        )
+
+        rows = cursor.fetchall()
+
+        if not rows:
+
             await query.edit_message_text(
 """
-🏆 Best Trade
-
-No trades recorded yet.
+🏆 Leaderboard empty.
 """
             )
+
             return
 
+        text = "🏆 *Top Traders*\n\n"
+
+        rank = 1
+
+        for r in rows:
+
+            user = r[0] if r[0] else "Trader"
+            profit = r[1]
+
+            text += f"{rank}️⃣ {user} — ₹{profit:.2f}\n"
+
+            rank += 1
+
+
         await query.edit_message_text(
-f"""
-🏆 Best Trade
-
-📅 Date: {row[0]}
-
-💰 Profit: ₹{row[1]:.2f}
-"""
+            text,
+            parse_mode="Markdown"
         )
 
 
-    # -------- LAST X DAYS --------
-    elif data == "days":
+# =========================================
+# 🤖 ABOUT
+# =========================================
 
-        sessions[user_id] = {"step": "days_input"}
-
-        await query.edit_message_text(
-"""
-📅 Last X Days Report
-
-Enter number of days you want to analyze.
-
-Example:
-3
-7
-15
-30
-
-(Max 30)
-"""
-        )
-
-
-    # -------- ABOUT BOT --------
     elif data == "about":
 
-        keyboard = [
-            [InlineKeyboardButton("📊 New Trade", callback_data="new_trade")],
-            [InlineKeyboardButton("📜 Trade History", callback_data="history")],
-            [InlineKeyboardButton("📅 Last X Days", callback_data="days")],
-            [InlineKeyboardButton("🏆 Best Trade", callback_data="best_trade")],
-            [InlineKeyboardButton("💰 Total Profit", callback_data="profit")]
-        ]
-
         await query.edit_message_text(
+
 """
-🤖 About This Bot
+🤖 *Velocity Trade Bot*
 
-Welcome to your USDT Trading Assistant.
+Your personal **USDT trading assistant**.
 
-This bot tracks your trades,
-calculates profit,
-and saves you from doing painful math in your head.
+Features:
 
-Built with curiosity, caffeine
-and a slightly dangerous amount of ambition.
+📊 Trade logging
+📈 Profit analytics
+⚡ Arbitrage calculator
+🏆 Leaderboard
+📅 Performance reports
 
-⚡ Created by
-@greatvelocity
+Built by:
+
+🚀 @greatvelocity
 """,
-            reply_markup=InlineKeyboardMarkup(keyboard)
+
+        parse_mode="Markdown"
+
         )
 
-# ================================
+# =========================================
 # 💬 MESSAGE HANDLER
-# ================================
+# =========================================
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -361,13 +469,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
 
 
-    # -------- OPPORTUNITY CALCULATOR --------
+# =========================================
+# ⚡ ARBITRAGE CALCULATOR
+# =========================================
 
     parts = text.split()
 
     if len(parts) == 3:
 
         try:
+
             qty = float(parts[0])
             buy = float(parts[1])
             sell = float(parts[2])
@@ -378,14 +489,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             insight = ai_insight(buy, sell)
 
             await update.message.reply_text(
+
 f"""
 ⚡ Arbitrage Result
 
 📦 Quantity: {qty}
+
 📉 Buy Price: {buy}
 📈 Sell Price: {sell}
 
 💰 Profit: ₹{profit:.2f}
+
 📊 ROI: {roi:.2f}%
 
 {insight}
@@ -398,7 +512,9 @@ f"""
             pass
 
 
-    # -------- SESSION CHECK --------
+# =========================================
+# SESSION CHECK
+# =========================================
 
     if user_id not in sessions:
         return
@@ -406,63 +522,22 @@ f"""
     session = sessions[user_id]
 
 
-    # -------- LAST X DAYS INPUT --------
-
-    if session["step"] == "days_input":
-
-        try:
-            d = int(text)
-
-            if d < 1 or d > 30:
-                await update.message.reply_text(
-"⚠ Please enter a number between 1 and 30."
-                )
-                return
-
-            since = datetime.datetime.now() - datetime.timedelta(days=d)
-
-            cursor.execute(
-                "SELECT COUNT(*), SUM(profit) FROM trades WHERE user_id=? AND date>=?",
-                (user_id, since.strftime("%Y-%m-%d"))
-            )
-
-            result = cursor.fetchone()
-
-            trades = result[0]
-            profit = result[1] if result[1] else 0
-
-            await update.message.reply_text(
-f"""
-📊 Last {d} Days Performance
-
-🔁 Trades Logged: {trades}
-
-💰 Total Profit: ₹{profit:.2f}
-"""
-            )
-
-            sessions.pop(user_id)
-
-        except:
-            await update.message.reply_text("⚠ Please enter a valid number.")
-
-        return
-
-# ================================
-# 📊 TRADE CONVERSATION ENGINE
-# ================================
-
-    # -------- BUY COUNT --------
+# =========================================
+# BUY COUNT
+# =========================================
 
     if session["step"] == "buy_count":
 
         try:
+
             n = int(text)
 
             if n < 1 or n > 15:
+
                 await update.message.reply_text(
-"⚠ Please enter a number between 1 and 15."
+"⚠ Enter number between 1 and 15"
                 )
+
                 return
 
             session["buy_count"] = n
@@ -471,22 +546,27 @@ f"""
             session["step"] = "buy_qty"
 
             await update.message.reply_text(
+
 f"""
 📦 Buy Trade #{session['current']}
 
-💰 How much USDT did you buy?
+How much USDT did you buy?
 """
             )
 
         except:
-            await update.message.reply_text("⚠ Enter a valid number.")
+
+            await update.message.reply_text("⚠ Enter valid number")
 
 
-    # -------- BUY QUANTITY --------
+# =========================================
+# BUY QTY
+# =========================================
 
     elif session["step"] == "buy_qty":
 
         try:
+
             session["temp_qty"] = float(text)
             session["step"] = "buy_price"
 
@@ -495,14 +575,18 @@ f"""
             )
 
         except:
-            await update.message.reply_text("⚠ Enter a valid number.")
+
+            await update.message.reply_text("⚠ Enter valid number")
 
 
-    # -------- BUY PRICE --------
+# =========================================
+# BUY PRICE
+# =========================================
 
     elif session["step"] == "buy_price":
 
         try:
+
             qty = session["temp_qty"]
             price = float(text)
 
@@ -514,10 +598,11 @@ f"""
                 session["step"] = "buy_qty"
 
                 await update.message.reply_text(
+
 f"""
 📦 Buy Trade #{session['current']}
 
-💰 How much USDT did you buy?
+How much USDT did you buy?
 """
                 )
 
@@ -526,30 +611,36 @@ f"""
                 session["step"] = "sell_count"
 
                 await update.message.reply_text(
+
 """
-📉 Now let's record your SELL trades.
+📉 Now enter SELL trades
 
-How many times did you SELL USDT today?
-
+How many SELL deals today?
 (Max 15)
 """
                 )
 
         except:
-            await update.message.reply_text("⚠ Enter a valid number.")
+
+            await update.message.reply_text("⚠ Enter valid number")
 
 
-    # -------- SELL COUNT --------
+# =========================================
+# SELL COUNT
+# =========================================
 
     elif session["step"] == "sell_count":
 
         try:
+
             n = int(text)
 
             if n < 1 or n > 15:
+
                 await update.message.reply_text(
-"⚠ Please enter a number between 1 and 15."
+"⚠ Enter number between 1 and 15"
                 )
+
                 return
 
             session["sell_count"] = n
@@ -558,141 +649,132 @@ How many times did you SELL USDT today?
             session["step"] = "sell_qty"
 
             await update.message.reply_text(
+
 f"""
 📦 Sell Trade #{session['current_sell']}
 
-💰 How much USDT did you sell?
+How much USDT did you sell?
 """
             )
 
         except:
-            await update.message.reply_text("⚠ Enter a valid number.")
 
-# -------- SELL QUANTITY --------
+            await update.message.reply_text("⚠ Enter valid number")
 
-    elif session["step"] == "sell_qty":
+# =========================================
+# 📈 PROFIT GRAPH SYSTEM
+# =========================================
 
-        try:
-            session["temp_sell_qty"] = float(text)
-            session["step"] = "sell_price"
-
-            await update.message.reply_text(
-"💲 At what price did you sell 1 USDT?"
-            )
-
-        except:
-            await update.message.reply_text("⚠ Enter a valid number.")
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 
-    # -------- SELL PRICE --------
+async def profit_graph(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    elif session["step"] == "sell_price":
+    user_id = update.effective_user.id
 
-        try:
-            qty = session["temp_sell_qty"]
-            price = float(text)
+    cursor.execute(
+        "SELECT date, profit FROM trades WHERE user_id=? ORDER BY date",
+        (user_id,)
+    )
 
-            session["sells"].append((qty, price))
+    rows = cursor.fetchall()
 
-            if session["current_sell"] < session["sell_count"]:
+    if not rows:
+        await update.message.reply_text(
+            "📊 No trade data available yet."
+        )
+        return
 
-                session["current_sell"] += 1
-                session["step"] = "sell_qty"
+    dates = []
+    profits = []
 
-                await update.message.reply_text(
+    for r in rows:
+        dates.append(r[0])
+        profits.append(r[1])
+
+    plt.figure()
+
+    plt.plot(dates, profits, marker="o")
+
+    plt.title("Profit Trend")
+    plt.xlabel("Date")
+    plt.ylabel("Profit")
+
+    plt.xticks(rotation=45)
+
+    plt.tight_layout()
+
+    plt.savefig("profit_chart.png")
+    plt.close()
+
+    with open("profit_chart.png", "rb") as chart:
+        await update.message.reply_photo(
+            chart,
+            caption="📈 Your Profit Performance"
+        )
+
+
+# =========================================
+# 👑 ADMIN STATS
+# =========================================
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Admin only command.")
+        return
+
+    cursor.execute("SELECT COUNT(*) FROM users")
+    users = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM trades")
+    trades = cursor.fetchone()[0]
+
+    cursor.execute("SELECT SUM(profit) FROM trades")
+    profit = cursor.fetchone()[0]
+
+    if profit is None:
+        profit = 0
+
+    await update.message.reply_text(
+
 f"""
-📦 Sell Trade #{session['current_sell']}
+📊 BOT STATISTICS
 
-💰 How much USDT did you sell?
+👥 Total Users: {users}
+
+📈 Total Trades: {trades}
+
+💰 Total Profit Logged: ₹{profit:.2f}
 """
-                )
+    )
 
-            else:
 
-                buys = session["buys"]
-                sells = session["sells"]
-
-                total_buy_qty = sum(q for q,p in buys)
-                total_buy_cost = sum(q*p for q,p in buys)
-
-                total_sell_qty = sum(q for q,p in sells)
-                total_sell_value = sum(q*p for q,p in sells)
-
-                avg_buy = total_buy_cost / total_buy_qty
-                avg_sell = total_sell_value / total_sell_qty
-
-                profit = total_sell_value - total_buy_cost
-                roi = (profit / total_buy_cost) * 100
-
-                insight = ai_insight(avg_buy, avg_sell)
-
-                date = datetime.date.today().strftime("%Y-%m-%d")
-
-                cursor.execute(
-"""
-INSERT INTO trades
-(user_id, username, date, buy_qty, sell_qty, avg_buy, avg_sell, profit, roi)
-VALUES (?,?,?,?,?,?,?,?,?)
-""",
-(
-user_id,
-username,
-date,
-total_buy_qty,
-total_sell_qty,
-avg_buy,
-avg_sell,
-profit,
-roi
-)
-                )
-
-                conn.commit()
-
-                keyboard = [
-                    [InlineKeyboardButton("📊 New Trade", callback_data="new_trade")],
-                    [InlineKeyboardButton("📜 History", callback_data="history")],
-                    [InlineKeyboardButton("📅 Last X Days", callback_data="days")],
-                    [InlineKeyboardButton("🏆 Best Trade", callback_data="best_trade")],
-                    [InlineKeyboardButton("💰 Total Profit", callback_data="profit")]
-                ]
-
-                await update.message.reply_text(
-f"""
-📊 TRADE SUMMARY
-
-💰 Total Bought: {total_buy_qty} USDT
-📤 Total Sold: {total_sell_qty} USDT
-
-📉 Avg Buy: {avg_buy:.2f}
-📈 Avg Sell: {avg_sell:.2f}
-
-💵 Profit: ₹{profit:.2f}
-📊 ROI: {roi:.2f}%
-
-{insight}
-""",
-reply_markup=InlineKeyboardMarkup(keyboard)
-)
-
-                sessions.pop(user_id)
-
-        except:
-            await update.message.reply_text("⚠ Enter a valid number.")
-
-# ================================
+# =========================================
 # 🤖 BOT STARTUP
-# ================================
+# =========================================
 
-app = ApplicationBuilder().token(TOKEN).build()
+def main():
 
-app.add_handler(CommandHandler("start", start))
+    app = ApplicationBuilder().token(TOKEN).build()
 
-app.add_handler(CallbackQueryHandler(buttons))
+    # commands
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler("graph", profit_graph))
 
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # buttons
+    app.add_handler(CallbackQueryHandler(buttons))
 
-print("🚀 USDT Trading Assistant is running...")
+    # text handler
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-app.run_polling()
+    print("🚀 Velocity Trade Bot running...")
 
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
